@@ -50,6 +50,8 @@
 #include <asm/vgic.h>
 #include <asm/cpuerrata.h>
 
+#include <asm/processor.h>
+
 /* The base of the stack must always be double-word aligned, which means
  * that both the kernel half of struct cpu_user_regs (which is pushed in
  * entry.S) and struct cpu_info (which lives at the bottom of a Xen
@@ -2696,6 +2698,12 @@ asmlinkage void do_trap_hypervisor(struct cpu_user_regs *regs)
         GUEST_BUG_ON(!psr_mode_is_32bit(regs->cpsr));
         perfc_incr(trap_smc32);
         do_trap_smc(regs, hsr);
+#if 0
+	if (current->domain->domain_id == 0)
+		call_smc(regs->r0, regs->r1, regs->r2, regs->r3);
+	else
+		inject_undef32_exception(regs);
+#endif
         break;
     case HSR_EC_HVC32:
         GUEST_BUG_ON(!psr_mode_is_32bit(regs->cpsr));
