@@ -32,6 +32,7 @@
 #include <xen/grant_table.h>
 #include <xen/xenoprof.h>
 #include <xen/irq.h>
+#include <xen/cpu_class.h>
 #include <asm/debugger.h>
 #include <asm/p2m.h>
 #include <asm/processor.h>
@@ -141,9 +142,11 @@ struct vcpu *alloc_vcpu(
     if ( !zalloc_cpumask_var(&v->cpu_hard_affinity) ||
          !zalloc_cpumask_var(&v->cpu_hard_affinity_tmp) ||
          !zalloc_cpumask_var(&v->cpu_hard_affinity_saved) ||
+         !zalloc_cpumask_var(&v->classes) ||
          !zalloc_cpumask_var(&v->cpu_soft_affinity) ||
          !zalloc_cpumask_var(&v->vcpu_dirty_cpumask) )
         goto fail_free;
+    cpu_class_set_all_classes(v->classes);
 
     if ( is_idle_domain(d) )
     {
@@ -170,6 +173,7 @@ struct vcpu *alloc_vcpu(
         free_cpumask_var(v->cpu_hard_affinity);
         free_cpumask_var(v->cpu_hard_affinity_tmp);
         free_cpumask_var(v->cpu_hard_affinity_saved);
+        free_cpumask_var(v->classes);
         free_cpumask_var(v->cpu_soft_affinity);
         free_cpumask_var(v->vcpu_dirty_cpumask);
         free_vcpu_struct(v);

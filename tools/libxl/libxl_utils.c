@@ -856,6 +856,33 @@ int libxl_node_bitmap_alloc(libxl_ctx *ctx, libxl_bitmap *nodemap,
     return rc;
 }
 
+int libxl_class_bitmap_alloc(libxl_ctx *ctx, libxl_bitmap *nodemap,
+                            int max_nodes)
+{
+    GC_INIT(ctx);
+    int rc = 0;
+
+    if (max_nodes < 0) {
+        rc = ERROR_INVAL;
+        LOG(ERROR, "invalid number of classes provided");
+        goto out;
+    }
+
+    if (max_nodes == 0)
+        max_nodes = libxl_get_max_classes(ctx);
+    if (max_nodes < 0) {
+        LOG(ERROR, "failed to retrieve the maximum number of classes");
+        rc = max_nodes;
+        goto out;
+    }
+    /* This can't fail: no need to check and log */
+    libxl_bitmap_alloc(ctx, nodemap, max_nodes);
+
+ out:
+    GC_FREE;
+    return rc;
+}
+
 int libxl__count_physical_sockets(libxl__gc *gc, int *sockets)
 {
     int rc;
@@ -993,6 +1020,48 @@ int libxl_cpumap_to_nodemap(libxl_ctx *ctx,
     return rc;
 }
 
+int libxl_class_to_cpumap(libxl_ctx *ctx, int cpu_class, libxl_bitmap *cpumap)
+{
+    libxl_cputopology *tinfo = NULL;
+    int nr_cpus = 0, i, rc = 0;
+
+    tinfo = libxl_get_cpu_topology(ctx, &nr_cpus);
+    if (tinfo == NULL) {
+        rc = ERROR_FAIL;
+        goto out;
+    }
+
+    libxl_bitmap_set_none(cpumap);
+
+    for (i = 0; i < nr_cpus; i++) {
+        if (tinfo[i].cpu_class == cpu_class)
+            libxl_bitmap_set(cpumap, i);
+    }
+
+ out:
+    libxl_cputopology_list_free(tinfo, nr_cpus);
+    return rc;
+}
+
+const char *libxl_class_to_string(uint32_t cpu_class) {
+    /* FIXME: hardcode known classes */
+    static int nr_valid_labels = 2;
+    static const char *cpu_class_labels[] = {"big", "LITTLE"};
+    return cpu_class >= nr_valid_labels ? NULL : cpu_class_labels[cpu_class];
+}
+
+uint32_t libxl_string_to_class(const char *str) {
+    int i = -1;
+    const char *label;
+
+    while ((label = libxl_class_to_string(++i)) != NULL)
+        if (strcmp(str, label) == 0)
+            return i;
+
+    return -1;
+}
+
+
 int libxl_get_max_cpus(libxl_ctx *ctx)
 {
     int max_cpus = xc_get_max_cpus(ctx->xch);
@@ -1012,6 +1081,20 @@ int libxl_get_max_nodes(libxl_ctx *ctx)
     int max_nodes = xc_get_max_nodes(ctx->xch);
 
     return max_nodes < 0 ? ERROR_FAIL : max_nodes;
+}
+
+int libxl_get_nr_classes(libxl_ctx *ctx)
+{
+    int nr_classes = xc_get_nr_classes(ctx->xch);
+
+    return nr_classes < 0 ? ERROR_FAIL : nr_classes;
+}
+
+int libxl_get_max_classes(libxl_ctx *ctx)
+{
+    int max_classes = xc_get_max_classes(ctx->xch);
+
+    return max_classes < 0 ? ERROR_FAIL : max_classes;
 }
 
 int libxl__enum_from_string(const libxl_enum_string_table *t,

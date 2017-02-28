@@ -250,6 +250,9 @@ struct vcpu
     /* Bitmask of CPUs which are holding onto this VCPU's state. */
     cpumask_var_t    vcpu_dirty_cpumask;
 
+    /* Bitmask of classes where the vcpu can run */
+    cpumask_var_t classes;
+
     /* Tasklet for continue_hypercall_on_cpu(). */
     struct tasklet   continue_hypercall_tasklet;
 
@@ -844,6 +847,7 @@ int vcpu_set_hard_affinity(struct vcpu *v, const cpumask_t *affinity);
 int vcpu_set_soft_affinity(struct vcpu *v, const cpumask_t *affinity);
 void restore_vcpu_affinity(struct domain *d);
 int vcpu_pin_override(struct vcpu *v, int cpu);
+int vcpu_set_classes(struct vcpu *v, const cpumask_t *classes);
 
 void vcpu_runstate_get(struct vcpu *v, struct vcpu_runstate_info *runstate);
 uint64_t get_cpu_idle_time(unsigned int cpu);

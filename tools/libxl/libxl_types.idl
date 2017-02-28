@@ -447,6 +447,7 @@ libxl_domain_build_info = Struct("domain_build_info",[
     ("nodemap",         libxl_bitmap),
     ("vcpu_hard_affinity", Array(libxl_bitmap, "num_vcpu_hard_affinity")),
     ("vcpu_soft_affinity", Array(libxl_bitmap, "num_vcpu_soft_affinity")),
+    ("vcpu_class", Array(libxl_bitmap, "num_vcpu_class")),
     ("numa_placement",  libxl_defbool),
     ("tsc_mode",        libxl_tsc_mode),
     ("max_memkb",       MemKB),
@@ -788,6 +789,7 @@ libxl_vcpuinfo = Struct("vcpuinfo", [
     ("vcpu_time", uint64), # total vcpu time ran (ns)
     ("cpumap", libxl_bitmap), # current hard cpu affinity
     ("cpumap_soft", libxl_bitmap), # current soft cpu affinity
+    ("classmap", libxl_bitmap), # current class affinity
     ], dir=DIR_OUT)
 
 libxl_physinfo = Struct("physinfo", [
@@ -825,6 +827,7 @@ libxl_cputopology = Struct("cputopology", [
     ("core", uint32),
     ("socket", uint32),
     ("node", uint32),
+    ("cpu_class", uint32),
     ], dir=DIR_OUT)
 
 libxl_pcitopology = Struct("pcitopology", [

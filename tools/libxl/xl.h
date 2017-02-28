@@ -67,6 +67,7 @@ int main_vm_list(int argc, char **argv);
 int main_create(int argc, char **argv);
 int main_config_update(int argc, char **argv);
 int main_button_press(int argc, char **argv);
+int main_vcpuclass(int argc, char **argv);
 int main_vcpupin(int argc, char **argv);
 int main_vcpuset(int argc, char **argv);
 int main_memmax(int argc, char **argv);

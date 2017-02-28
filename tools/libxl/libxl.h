@@ -1408,6 +1408,12 @@ int libxl_get_online_cpus(libxl_ctx *ctx);
 /* get max. number of NUMA nodes supported by hypervisor */
 int libxl_get_max_nodes(libxl_ctx *ctx);
 
+/* get number of classes */
+int libxl_get_nr_classes(libxl_ctx *ctx);
+
+/* get max. number of classes supported by hypervisor */
+int libxl_get_max_classes(libxl_ctx *ctx);
+
 int libxl_domain_rename(libxl_ctx *ctx, uint32_t domid,
                         const char *old_name, const char *new_name);
 
@@ -1998,6 +2004,10 @@ int libxl_domain_set_nodeaffinity(libxl_ctx *ctx, uint32_t domid,
 int libxl_domain_get_nodeaffinity(libxl_ctx *ctx, uint32_t domid,
                                   libxl_bitmap *nodemap);
 int libxl_set_vcpuonline(libxl_ctx *ctx, uint32_t domid, libxl_bitmap *cpumap);
+int libxl_set_vcpuclass(libxl_ctx *ctx, uint32_t domid, uint32_t vcpuid,
+                        const libxl_bitmap *classmap);
+int libxl_get_vcpuclass(libxl_ctx *ctx, uint32_t domid, uint32_t vcpuid,
+                        const libxl_bitmap *classmap);
 
 /* A return value less than 0 should be interpreted as a libxl_error, while a
  * return value greater than or equal to 0 should be interpreted as a

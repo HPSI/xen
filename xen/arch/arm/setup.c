@@ -23,6 +23,7 @@
 #include <xen/types.h>
 #include <xen/string.h>
 #include <xen/serial.h>
+#include <xen/cpu_class.h>
 #include <xen/sched.h>
 #include <xen/console.h>
 #include <xen/err.h>
@@ -49,6 +50,7 @@
 #include <asm/setup.h>
 #include <xsm/xsm.h>
 #include <asm/acpi.h>
+#include <xen/cpu_class.h>
 
 struct bootinfo __initdata bootinfo;
 
@@ -827,6 +829,7 @@ void __init start_xen(unsigned long boot_phys_offset,
     }
 
     printk("Brought up %ld CPUs\n", (long)num_online_cpus());
+    cpu_class_classify_cpus(cpus);
     /* TODO: smp_cpus_done(); */
 
     setup_virt_paging();

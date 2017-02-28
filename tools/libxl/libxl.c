@@ -432,6 +432,7 @@ libxl_cputopology *libxl_get_cpu_topology(libxl_ctx *ctx, int *nb_cpu_out)
         ret[i].core = V(core, i, XEN_INVALID_CORE_ID);
         ret[i].socket = V(socket, i, XEN_INVALID_SOCKET_ID);
         ret[i].node = V(node, i, XEN_INVALID_NODE_ID);
+        ret[i].cpu_class = V(cpu_class, i, XEN_INVALID_CPU_CLASS_ID);
 #undef V
     }
 

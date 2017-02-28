@@ -155,7 +155,8 @@ static void ctxt_switch_to(struct vcpu *n)
 
     p2m_restore_state(n);
 
-    WRITE_SYSREG32(n->domain->arch.vpidr, VPIDR_EL2);
+    /* FIXME: check that this is correct */
+    WRITE_SYSREG32(READ_SYSREG32(MIDR_EL1), VPIDR_EL2);
     WRITE_SYSREG(n->arch.vmpidr, VMPIDR_EL2);
 
     /* VGIC */

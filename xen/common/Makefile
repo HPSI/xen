@@ -2,6 +2,7 @@ obj-y += bitmap.o
 obj-y += bsearch.o
 obj-$(CONFIG_CORE_PARKING) += core_parking.o
 obj-y += cpu.o
+obj-y += cpu_class.o
 obj-y += cpupool.o
 obj-$(CONFIG_HAS_DEVICE_TREE) += device_tree.o
 obj-y += domctl.o

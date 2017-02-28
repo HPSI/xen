@@ -336,6 +336,14 @@ struct xen_domctl_vcpuaffinity {
 typedef struct xen_domctl_vcpuaffinity xen_domctl_vcpuaffinity_t;
 DEFINE_XEN_GUEST_HANDLE(xen_domctl_vcpuaffinity_t);
 
+/* Get/set which classes a vcpu belongs in. */
+/* XEN_DOMCTL_classaffinity */
+struct xen_domctl_classaffinity {
+    uint32_t  vcpu;
+    struct xenctl_bitmap classmap;
+};
+typedef struct xen_domctl_classaffinity xen_domctl_classaffinity_t;
+
 
 /* XEN_DOMCTL_max_vcpus */
 struct xen_domctl_max_vcpus {
@@ -1222,6 +1230,8 @@ struct xen_domctl {
 #define XEN_DOMCTL_monitor_op                    77
 #define XEN_DOMCTL_psr_cat_op                    78
 #define XEN_DOMCTL_soft_reset                    79
+#define XEN_DOMCTL_setvcpuclass                  80
+#define XEN_DOMCTL_getvcpuclass                  81
 #define XEN_DOMCTL_gdbsx_guestmemio            1000
 #define XEN_DOMCTL_gdbsx_pausevcpu             1001
 #define XEN_DOMCTL_gdbsx_unpausevcpu           1002
@@ -1235,6 +1245,7 @@ struct xen_domctl {
         struct xen_domctl_getpageframeinfo3 getpageframeinfo3;
         struct xen_domctl_nodeaffinity      nodeaffinity;
         struct xen_domctl_vcpuaffinity      vcpuaffinity;
+        struct xen_domctl_classaffinity     classaffinity;
         struct xen_domctl_shadow_op         shadow_op;
         struct xen_domctl_max_mem           max_mem;
         struct xen_domctl_vcpucontext       vcpucontext;

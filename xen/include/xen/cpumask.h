@@ -355,12 +355,24 @@ static inline bool_t zalloc_cpumask_var(cpumask_var_t *mask)
 	return *mask != NULL;
 }
 
+static inline bool_t alloc_cpumask_arr(cpumask_var_t *mask, unsigned long num)
+{
+    *(void **)mask = _xmalloc_array(nr_cpumask_bits / 8, sizeof(long), num);
+    return *mask != NULL;
+}
+
+static inline bool_t zalloc_cpumask_arr(cpumask_var_t *mask, unsigned long num)
+{
+    *(void **)mask = _xzalloc_array(nr_cpumask_bits / 8, sizeof(long), num);
+    return *mask != NULL;
+}
+
 static inline void free_cpumask_var(cpumask_var_t mask)
 {
 	xfree(mask);
 }
 #else
-typedef cpumask_t cpumask_var_t[1];
+typedef cpumask_t cpumask_var_t[2]; /* FIXME: don't hardcode the # of classes */
 
 static inline bool_t alloc_cpumask_var(cpumask_var_t *mask)
 {
@@ -371,6 +383,16 @@ static inline bool_t zalloc_cpumask_var(cpumask_var_t *mask)
 {
 	cpumask_clear(*mask);
 	return 1;
+}
+
+static inline bool_t alloc_cpumask_arr(cpumask_var_t *mask, unsigned long num)
+{
+    return 1;
+}
+
+static inline bool_t zalloc_cpumask_arr(cpumask_var_t *mask, unsigned long num)
+{
+    return 1;
 }
 
 static inline void free_cpumask_var(cpumask_var_t mask)

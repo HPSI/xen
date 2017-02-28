@@ -146,6 +146,8 @@ static inline int libxl_bitmap_equal(const libxl_bitmap *ba,
 int libxl_cpu_bitmap_alloc(libxl_ctx *ctx, libxl_bitmap *cpumap, int max_cpus);
 int libxl_node_bitmap_alloc(libxl_ctx *ctx, libxl_bitmap *nodemap,
                             int max_nodes);
+int libxl_class_bitmap_alloc(libxl_ctx *ctx, libxl_bitmap *classmap,
+                            int max_classes);
 int libxl_socket_bitmap_alloc(libxl_ctx *ctx, libxl_bitmap *socketmap,
                               int max_sockets);
 /* Fill socketmap with the CPU topology information on the system. */
@@ -162,8 +164,14 @@ int libxl_node_to_cpumap(libxl_ctx *ctx, int node,
 int libxl_cpumap_to_nodemap(libxl_ctx *ctx,
                             const libxl_bitmap *cpumap,
                             libxl_bitmap *nodemap);
+/* Populate cpumap with the cpus of a cpu_class */
+int libxl_class_to_cpumap(libxl_ctx *ctx, int cpu_class, libxl_bitmap *cpumap);
+/* Given a string str, returns the corresponding cpu_class id if found, -1 otherwise */
+uint32_t libxl_string_to_class(const char *str);
+/* Given a cpu class id, returns the corresponding label if there is one, NULL otherwise */
+const char *libxl_class_to_string(uint32_t cpu_class);
 
- static inline uint32_t libxl__sizekb_to_mb(uint32_t s) {
+static inline uint32_t libxl__sizekb_to_mb(uint32_t s) {
     return (s + 1023) / 1024;
 }
 

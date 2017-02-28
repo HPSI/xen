@@ -28,6 +28,7 @@
 #include <xen/pmstat.h>
 #include <xen/livepatch.h>
 #include <xen/gcov.h>
+#include <xen/cpu_class.h>
 
 long do_sysctl(XEN_GUEST_HANDLE_PARAM(xen_sysctl_t) u_sysctl)
 {
@@ -259,8 +260,10 @@ long do_sysctl(XEN_GUEST_HANDLE_PARAM(xen_sysctl_t) u_sysctl)
             cpumask_weight(per_cpu(cpu_core_mask, 0)) / pi->threads_per_core;
         pi->nr_cpus = num_online_cpus();
         pi->nr_nodes = num_online_nodes();
+        pi->nr_classes = NR_CLASSES;
         pi->max_node_id = MAX_NUMNODES-1;
         pi->max_cpu_id = nr_cpu_ids - 1;
+        pi->max_class_id = nr_cpu_ids - 1;
         pi->total_pages = total_pages;
         /* Protected by lock */
         get_outstanding_claims(&pi->free_pages, &pi->outstanding_pages);
@@ -364,12 +367,14 @@ long do_sysctl(XEN_GUEST_HANDLE_PARAM(xen_sysctl_t) u_sysctl)
                     cputopo.node = cpu_to_node(i);
                     if ( cputopo.node == NUMA_NO_NODE )
                         cputopo.node = XEN_INVALID_NODE_ID;
+                    cputopo.cpu_class = cpu_to_class[i];
                 }
                 else
                 {
                     cputopo.core = XEN_INVALID_CORE_ID;
                     cputopo.socket = XEN_INVALID_SOCKET_ID;
                     cputopo.node = XEN_INVALID_NODE_ID;
+                    cputopo.cpu_class = XEN_INVALID_CPU_CLASS_ID;
                 }
 
                 if ( copy_to_guest_offset(ti->cputopo, i, &cputopo, 1) )

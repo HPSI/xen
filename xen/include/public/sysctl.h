@@ -99,6 +99,8 @@ struct xen_sysctl_physinfo {
     uint32_t max_cpu_id;  /* Largest possible CPU ID on this host */
     uint32_t nr_nodes;    /* # nodes currently online */
     uint32_t max_node_id; /* Largest possible node ID on this host */
+    uint32_t nr_classes; /* # classes currently online */
+    uint32_t max_class_id; /* Largest possible class ID on this host */
     uint32_t cpu_khz;
     uint64_aligned_t total_pages;
     uint64_aligned_t free_pages;
@@ -468,11 +470,13 @@ DEFINE_XEN_GUEST_HANDLE(xen_sysctl_lockprof_op_t);
 #define XEN_INVALID_CORE_ID     (~0U)
 #define XEN_INVALID_SOCKET_ID   (~0U)
 #define XEN_INVALID_NODE_ID     (~0U)
+#define XEN_INVALID_CPU_CLASS_ID     (~0U)
 
 struct xen_sysctl_cputopo {
     uint32_t core;
     uint32_t socket;
     uint32_t node;
+    uint32_t cpu_class;
 };
 typedef struct xen_sysctl_cputopo xen_sysctl_cputopo_t;
 DEFINE_XEN_GUEST_HANDLE(xen_sysctl_cputopo_t);

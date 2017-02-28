@@ -28,6 +28,7 @@
 #include <xen/trace.h>
 #include <xen/mm.h>
 #include <xen/err.h>
+#include <xen/cpu_class.h>
 #include <xen/guest_access.h>
 #include <xen/hypercall.h>
 #include <xen/multicall.h>
@@ -228,7 +229,10 @@ int sched_init_vcpu(struct vcpu *v, unsigned int processor)
     if ( is_idle_domain(d) || d->is_pinned )
         cpumask_copy(v->cpu_hard_affinity, cpumask_of(processor));
     else
-        cpumask_setall(v->cpu_hard_affinity);
+    {
+        cpumask_to_cpu_classes(v->classes, cpumask_of(processor));
+        cpu_classes_to_cpumask(v->cpu_hard_affinity, v->classes);
+    }
 
     cpumask_setall(v->cpu_soft_affinity);
 
@@ -827,6 +831,14 @@ static int vcpu_set_affinity(
     return ret;
 }
 
+static inline int is_affinity_class_compatible(struct vcpu *v, const cpumask_t *affinity)
+{
+    cpumask_t classes, tmp;
+    cpumask_to_cpu_classes(&classes, affinity);
+    cpumask_or(&tmp, &classes, v->classes);
+    return cpumask_equal(&tmp, v->classes);
+}
+
 int vcpu_set_hard_affinity(struct vcpu *v, const cpumask_t *affinity)
 {
     cpumask_t online_affinity;
@@ -840,12 +852,33 @@ int vcpu_set_hard_affinity(struct vcpu *v, const cpumask_t *affinity)
     if ( cpumask_empty(&online_affinity) )
         return -EINVAL;
 
+    if ( !is_affinity_class_compatible(v, &online_affinity) )
+        return -EINVAL;
+
     return vcpu_set_affinity(v, affinity, v->cpu_hard_affinity);
 }
 
 int vcpu_set_soft_affinity(struct vcpu *v, const cpumask_t *affinity)
 {
     return vcpu_set_affinity(v, affinity, v->cpu_soft_affinity);
+}
+
+int vcpu_set_classes(struct vcpu *v, const cpumask_t *classes)
+{
+    int ret = 0;
+    cpumask_t tmp, classes_mask;
+
+    if ( cpumask_empty(classes) )
+        return -EINVAL;
+
+    cpumask_copy(&tmp, v->classes);
+    cpumask_copy(v->classes, classes);
+    cpu_classes_to_cpumask(&classes_mask, classes);
+    ret = vcpu_set_hard_affinity(v, &classes_mask);
+    if (ret)
+        cpumask_copy(v->classes, &tmp);
+
+    return ret;
 }
 
 /* Block the currently-executing domain until a pertinent event occurs. */
@@ -1636,6 +1669,9 @@ void __init scheduler_init(void)
     int i;
 
     open_softirq(SCHEDULE_SOFTIRQ, schedule);
+
+    if (cpu_class_init())
+        panic("couldn't initialize cpu_class");
 
     for ( i = 0; i < NUM_SCHEDULERS; i++)
     {

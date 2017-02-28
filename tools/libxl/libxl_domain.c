@@ -1226,6 +1226,9 @@ libxl_vcpuinfo *libxl_list_vcpu(libxl_ctx *ctx, uint32_t domid,
         libxl_bitmap_init(&ptr->cpumap);
         if (libxl_cpu_bitmap_alloc(ctx, &ptr->cpumap, 0))
             goto err;
+        libxl_bitmap_init(&ptr->classmap);
+        if (libxl_class_bitmap_alloc(ctx, &ptr->classmap, 0))
+            goto err;
         libxl_bitmap_init(&ptr->cpumap_soft);
         if (libxl_cpu_bitmap_alloc(ctx, &ptr->cpumap_soft, 0))
             goto err;
@@ -1238,6 +1241,10 @@ libxl_vcpuinfo *libxl_list_vcpu(libxl_ctx *ctx, uint32_t domid,
                                 ptr->cpumap.map, ptr->cpumap_soft.map,
                                 XEN_VCPUAFFINITY_SOFT|XEN_VCPUAFFINITY_HARD) == -1) {
             LOGED(ERROR, domid, "Getting vcpu affinity");
+            goto err;
+        }
+        if (libxl_get_vcpuclass(ctx, domid, *nr_vcpus_out, &ptr->classmap)) {
+            LOGE(ERROR, "getting vcpu class");
             goto err;
         }
         ptr->vcpuid = *nr_vcpus_out;
@@ -1253,6 +1260,7 @@ libxl_vcpuinfo *libxl_list_vcpu(libxl_ctx *ctx, uint32_t domid,
 err:
     libxl_bitmap_dispose(&ptr->cpumap);
     libxl_bitmap_dispose(&ptr->cpumap_soft);
+    libxl_bitmap_dispose(&ptr->classmap);
     free(ret);
     GC_FREE;
     return NULL;

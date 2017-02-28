@@ -17,6 +17,7 @@ obj-bin-y += clear_page.o
 obj-bin-y += copy_page.o
 obj-y += cpuid.o
 obj-y += compat.o x86_64/compat.o
+obj-y += cpu_class.o
 obj-$(CONFIG_KEXEC) += crash.o
 obj-y += debug.o
 obj-y += delay.o

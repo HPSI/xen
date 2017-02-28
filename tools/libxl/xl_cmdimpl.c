@@ -770,13 +770,13 @@ static int parse_range(const char *str, unsigned long *a, unsigned long *b)
 
 /*
  * Add or removes a specific set of cpus (specified in str, either as
- * single cpus or as entire NUMA nodes) to/from cpumap.
+ * single cpus or as entire NUMA nodes or as classes) to/from cpumap.
  */
 static int update_cpumap_range(const char *str, libxl_bitmap *cpumap)
 {
     unsigned long ida, idb;
     libxl_bitmap node_cpumap;
-    bool is_not = false, is_nodes = false;
+    bool is_not = false, is_nodes = false, is_class = false;
     int rc = 0;
 
     libxl_bitmap_init(&node_cpumap);
@@ -796,6 +796,10 @@ static int update_cpumap_range(const char *str, libxl_bitmap *cpumap)
     if (STR_SKIP_PREFIX(str, "node:") || STR_SKIP_PREFIX(str, "nodes:")) {
         is_nodes = true;
     }
+    else if (STR_SKIP_PREFIX(str, "class:")) { /* Are we dealing with cpus or cpu_classes? */
+        is_class = true;
+    }
+
 
     if (strcmp(str, "all") == 0) {
         /* We do not accept "^all" or "^nodes:all" */
@@ -809,8 +813,20 @@ static int update_cpumap_range(const char *str, libxl_bitmap *cpumap)
 
     rc = parse_range(str, &ida, &idb);
     if (rc) {
-        fprintf(stderr, "Invalid pcpu range: %s.\n", str);
-        goto out;
+        if (is_class) {
+            /* Might be a string class identifier */
+            rc = libxl_string_to_class(str);
+            if (rc >= 0) {
+                idb = ida = rc;
+                rc = 0;
+            } else {
+                fprintf(stderr, "Invalid pcpu range: %s.\n", str);
+                goto out;
+            }
+        } else {
+            fprintf(stderr, "Invalid pcpu range: %s.\n", str);
+            goto out;
+        }
     }
 
     /* Add or remove the specified cpus in the range */
@@ -822,6 +838,20 @@ static int update_cpumap_range(const char *str, libxl_bitmap *cpumap)
             rc = libxl_node_to_cpumap(ctx, ida, &node_cpumap);
             if (rc) {
                 fprintf(stderr, "libxl_node_to_cpumap failed.\n");
+                goto out;
+            }
+
+            /* Add/Remove all the cpus in the node cpumap */
+            libxl_for_each_set_bit(i, node_cpumap) {
+                is_not ? libxl_bitmap_reset(cpumap, i) :
+                         libxl_bitmap_set(cpumap, i);
+            }
+        } else if (is_class) {
+            /* Add/Remove all the cpus of a hybrid group */
+            int i;
+            rc = libxl_class_to_cpumap(ctx, ida, &node_cpumap);
+            if (rc) {
+                fprintf(stderr, "libxl_cpu_class_to_cpumap failed.\n");
                 goto out;
             }
 
@@ -844,8 +874,54 @@ static int update_cpumap_range(const char *str, libxl_bitmap *cpumap)
 }
 
 /*
+ * Add or removes a specific set of classes (specified in str, either as
+ * single classes or as class strings) to/from classmap.
+ */
+static int update_classmap_range(const char *str, libxl_bitmap *classmap)
+{
+    unsigned long ida, idb;
+    bool is_not = false;
+    int rc = 0;
+
+    /* Are we adding or removing cpus/nodes? */
+    if (STR_SKIP_PREFIX(str, "^")) {
+        is_not = true;
+    }
+
+    if (strcmp(str, "all") == 0) {
+        /* We do not accept "^all" */
+        if (is_not) {
+            fprintf(stderr, "Can't combine \"^\" and \"all\".\n");
+            rc = ERROR_INVAL;
+        } else
+            libxl_bitmap_set_any(classmap);
+        return rc;
+    }
+
+    rc = parse_range(str, &ida, &idb);
+    if (rc) {
+        /* Might be a string class identifier */
+        rc = libxl_string_to_class(str);
+        if (rc >= 0) {
+            idb = ida = rc;
+        } else {
+            fprintf(stderr, "Invalid class name / range: %s.\n", str);
+            return rc;
+        }
+    }
+
+    /* Add or remove the specified classes in the range */
+    for (; ida <= idb; ida++) {
+        /* Add/Remove this cpu */
+        is_not ? libxl_bitmap_reset(classmap, ida) : libxl_bitmap_set(classmap, ida);
+    }
+
+    return 0;
+}
+
+/*
  * Takes a string representing a set of cpus (specified either as
- * single cpus or as eintire NUMA nodes) and turns it into the
+ * single cpus or as entire NUMA nodes or as classes) and turns it into the
  * corresponding libxl_bitmap (in cpumap).
  */
 static int cpurange_parse(const char *cpu, libxl_bitmap *cpumap)
@@ -856,6 +932,27 @@ static int cpurange_parse(const char *cpu, libxl_bitmap *cpumap)
     for (ptr = strtok_r(buf, ",", &saveptr); ptr;
          ptr = strtok_r(NULL, ",", &saveptr)) {
         rc = update_cpumap_range(ptr, cpumap);
+        if (rc)
+            break;
+    }
+    free(buf);
+
+    return rc;
+}
+
+/*
+ * Takes a string representing a set of classes (specified either as
+ * single classes or as class names) and turns it to the
+ * corresponding libxl_bitmap (in classmap).
+ */
+static int classrange_parse(const char *cpu, libxl_bitmap *classmap)
+{
+    char *ptr, *saveptr = NULL, *buf = xstrdup(cpu);
+    int rc = 0;
+
+    for (ptr = strtok_r(buf, ",", &saveptr); ptr;
+         ptr = strtok_r(NULL, ",", &saveptr)) {
+        rc = update_classmap_range(ptr, classmap);
         if (rc)
             break;
     }
@@ -1005,6 +1102,132 @@ static unsigned long parse_ulong(const char *str)
     }
     return val;
 }
+
+static void parse_vcpu_class_part(libxl_domain_build_info *b_info,
+                                  const char *buf)
+{
+    libxl_bitmap cpumap;
+    int i, j = 0, start = -1;
+    char copybuf[30];
+
+    libxl_bitmap_init(&cpumap);
+    if (libxl_cpu_bitmap_alloc(ctx, &cpumap, 0)) {
+        fprintf(stderr, "Unable to allocate cpumap");
+        exit(EXIT_FAILURE);
+    }
+
+    for (j = 0; *buf != '\0' && *buf != ':'; j++, buf++)
+        copybuf[j] = *buf;
+    if (*buf++ == '\0')
+        exit(EXIT_FAILURE);
+    copybuf[j] = '\0';
+
+    if (cpurange_parse(copybuf, &cpumap))
+        exit(EXIT_FAILURE);
+
+
+    libxl_for_each_set_bit(i, cpumap) {
+        if (libxl_class_bitmap_alloc(ctx, &b_info->vcpu_class[i], 0)) {
+            fprintf(stderr, "Unable to allocate classmap for vcpu %d\n", i);
+            exit(EXIT_FAILURE);
+        }
+
+        if (start < 0) {
+            start = i;
+            for (j = 0; *buf != '\0'; j++, buf++)
+                copybuf[j] = *buf;
+            copybuf[j] = '\0';
+
+            if (classrange_parse(copybuf, &b_info->vcpu_class[i]))
+                exit(EXIT_FAILURE);
+        }
+        else
+            libxl_bitmap_copy(ctx, &b_info->vcpu_class[i], &b_info->vcpu_class[start]);
+    }
+}
+
+static void parse_vcpu_class(libxl_domain_build_info *b_info,
+                             XLU_ConfigList *cpus, const char *buf,
+                             int num_parts)
+{
+    /*
+     * If we are here, and buf is NULL, we're dealing with a list of strings.
+     * The strings must have the form vcpus:classes to be valid.
+     * The vcpus that are not declared in any class will default to class 0.
+     *
+     * If buf is not NULL, we have a string, specifying a class or list of classes.
+     * All vcpus will be added to those classes.
+     * The special string "mixed" is also allowed, which will assign vcpus to classes
+     * in a RR way (e.g. cpu0->class0, cpu1->class1...).
+     */
+
+    /* Silently ignore values corresponding to non existing vcpus */
+    int i, start = -1;
+
+    b_info->num_vcpu_class = b_info->max_vcpus;
+    b_info->vcpu_class = xcalloc(b_info->num_vcpu_class, sizeof(libxl_bitmap));
+
+    if (!buf) {
+        i = 0;
+        /* create some classmaps from the list */
+        if (cpus)
+            while ((buf = xlu_cfg_get_listitem(cpus, i)) != NULL && i < num_parts) {
+                parse_vcpu_class_part(b_info, buf);
+                i++;
+            }
+        /* create the rest of classmaps (defaulting at class 0) */
+        for (i = 0; i < b_info->num_vcpu_class; i++) {
+            if (b_info->vcpu_class[i].map == NULL) {
+                if (libxl_class_bitmap_alloc(ctx, &b_info->vcpu_class[i], 0)) {
+                    fprintf(stderr, "Unable to allocate classmap for vcpu %d\n", i);
+                    exit(EXIT_FAILURE);
+                }
+                if (start < 0) {
+                    start = i;
+                    libxl_bitmap_set(&b_info->vcpu_class[start], 0);
+                } else
+                    libxl_bitmap_copy(ctx, &b_info->vcpu_class[i],
+                                    &b_info->vcpu_class[start]);
+            }
+        }
+    } else {
+        if (strcmp(buf, "mixed") == 0) {
+            int nr_classes = libxl_get_nr_classes(ctx);
+            for (i = 0; i < b_info->max_vcpus; i++) {
+                if (libxl_class_bitmap_alloc(ctx, &b_info->vcpu_class[i], 0)) {
+                    fprintf(stderr, "Unable to allocate classmap for vcpu %d\n", i);
+                    exit(EXIT_FAILURE);
+                }
+                libxl_bitmap_set(&b_info->vcpu_class[i], i % nr_classes);
+            }
+        }
+        else {
+            if (libxl_class_bitmap_alloc(ctx, &b_info->vcpu_class[0], 0)) {
+                fprintf(stderr, "Unable to allocate classmap for vcpu 0\n");
+                exit(EXIT_FAILURE);
+            }
+
+            if (classrange_parse(buf, &b_info->vcpu_class[0]))
+                exit(EXIT_FAILURE);
+
+            for (i = 1; i < b_info->max_vcpus; i++) {
+                if (libxl_class_bitmap_alloc(ctx, &b_info->vcpu_class[i], 0)) {
+                    fprintf(stderr, "Unable to allocate classmap for vcpu %d\n", i);
+                    exit(EXIT_FAILURE);
+                }
+                libxl_bitmap_copy(ctx, &b_info->vcpu_class[i],
+                                &b_info->vcpu_class[0]);
+            }
+        }
+    }
+
+    if (cpus) {
+        /* We have a list of classmaps, disable automatic placement */
+        /* TODO: Is this actually needed? :*/
+        libxl_defbool_set(&b_info->numa_placement, false);
+    }
+}
+
 
 static void replace_string(char **str, const char *val)
 {
@@ -1459,6 +1682,13 @@ static void parse_config_data(const char *config_source,
     if (!xlu_cfg_get_list (config, "cpus_soft", &cpus, &num_cpus, 1) ||
         !xlu_cfg_get_string (config, "cpus_soft", &buf, 0))
         parse_vcpu_affinity(b_info, cpus, buf, num_cpus, false);
+
+    buf = NULL;
+    if (!xlu_cfg_get_list (config, "vcpuclass", &cpus, &num_cpus, 1) ||
+        !xlu_cfg_get_string (config, "vcpuclass", &buf, 0))
+        parse_vcpu_class(b_info, cpus, buf, num_cpus);
+    else
+        parse_vcpu_class(b_info, NULL, buf, num_cpus);
 
     libxl_defbool_set(&b_info->claim_mode, claim_mode);
 
@@ -4309,6 +4539,27 @@ static void print_bitmap(uint8_t *map, int maplen, FILE *stream)
     }
 }
 
+static void print_classmap(uint8_t *map, int maplen, bool labels, FILE *stream)
+{
+    if (labels) {
+        int i;
+        uint8_t pmap = 0, bitmask = 0;
+        int state = 0;
+
+        for (i = 0; i < maplen; i++) {
+            if (i % 8 == 0) {
+                pmap = *map++;
+                bitmask = 1;
+            } else bitmask <<= 1;
+
+            if ((pmap & bitmask) != 0)
+                fprintf(stream, "%s%s", state++ == 0 ? "" : ",", libxl_class_to_string(i));
+        }
+    } else {
+        print_bitmap(map, maplen, stream);
+    }
+}
+
 static void list_domains(bool verbose, bool context, bool claim, bool numa,
                          bool cpupool, const libxl_dominfo *info, int nb_domain)
 {
@@ -5685,7 +5936,7 @@ int main_button_press(int argc, char **argv)
 
 static void print_vcpuinfo(uint32_t tdomid,
                            const libxl_vcpuinfo *vcpuinfo,
-                           uint32_t nr_cpus)
+                           uint32_t nr_cpus, bool classes, bool labels)
 {
     char *domname;
 
@@ -5709,10 +5960,14 @@ static void print_vcpuinfo(uint32_t tdomid,
     print_bitmap(vcpuinfo->cpumap.map, nr_cpus, stdout);
     printf(" / ");
     print_bitmap(vcpuinfo->cpumap_soft.map, nr_cpus, stdout);
+    if (classes) {
+        printf(" / ");
+        print_classmap(vcpuinfo->classmap.map, libxl_get_nr_classes(ctx), labels, stdout);
+    }
     printf("\n");
 }
 
-static void print_domain_vcpuinfo(uint32_t domid, uint32_t nr_cpus)
+static void print_domain_vcpuinfo(uint32_t domid, uint32_t nr_cpus, bool classes, bool labels)
 {
     libxl_vcpuinfo *vcpuinfo;
     int i, nb_vcpu, nrcpus;
@@ -5723,13 +5978,13 @@ static void print_domain_vcpuinfo(uint32_t domid, uint32_t nr_cpus)
         return;
 
     for (i = 0; i < nb_vcpu; i++) {
-        print_vcpuinfo(domid, &vcpuinfo[i], nr_cpus);
+        print_vcpuinfo(domid, &vcpuinfo[i], nr_cpus, classes, labels);
     }
 
     libxl_vcpuinfo_list_free(vcpuinfo, nb_vcpu);
 }
 
-static void vcpulist(int argc, char **argv)
+static void vcpulist(int argc, char **argv, bool classes, bool labels)
 {
     libxl_dominfo *dominfo;
     libxl_physinfo physinfo;
@@ -5742,7 +5997,7 @@ static void vcpulist(int argc, char **argv)
 
     printf("%-32s %5s %5s %5s %5s %9s %s\n",
            "Name", "ID", "VCPU", "CPU", "State", "Time(s)",
-           "Affinity (Hard / Soft)");
+           classes ? "Affinity (Hard / Soft / Class)" : "Affinity (Hard / Soft)");
     if (!argc) {
         if (!(dominfo = libxl_list_domain(ctx, &nb_domain))) {
             fprintf(stderr, "libxl_list_domain failed.\n");
@@ -5750,13 +6005,13 @@ static void vcpulist(int argc, char **argv)
         }
 
         for (i = 0; i<nb_domain; i++)
-            print_domain_vcpuinfo(dominfo[i].domid, physinfo.nr_cpus);
+            print_domain_vcpuinfo(dominfo[i].domid, physinfo.nr_cpus, classes, labels);
 
         libxl_dominfo_list_free(dominfo, nb_domain);
     } else {
         for (; argc > 0; ++argv, --argc) {
             uint32_t domid = find_domain(*argv);
-            print_domain_vcpuinfo(domid, physinfo.nr_cpus);
+            print_domain_vcpuinfo(domid, physinfo.nr_cpus, classes, labels);
         }
     }
   vcpulist_out:
@@ -5766,13 +6021,96 @@ static void vcpulist(int argc, char **argv)
 int main_vcpulist(int argc, char **argv)
 {
     int opt;
+    bool classes = false, labels = false;
+    static struct option opts[] = {
+        {"classes", 0, 0, 'c'},
+        {"labels", 0, 0, 'l'},
+        COMMON_LONG_OPTS
+    };
 
-    SWITCH_FOREACH_OPT(opt, "", NULL, "vcpu-list", 0) {
-        /* No options */
+    SWITCH_FOREACH_OPT(opt, "cl", opts, "vcpu-list", 0) {
+        case 'c':
+            classes = true;
+            break;
+        case 'l':
+            labels = true;
+            break;
     }
 
-    vcpulist(argc - optind, argv + optind);
+    vcpulist(argc - optind, argv + optind, classes, labels);
     return EXIT_SUCCESS;
+}
+
+int main_vcpuclass(int argc, char **argv)
+{
+    libxl_bitmap cpumap_classmap;
+    libxl_bitmap *classmap = &cpumap_classmap;
+    uint32_t domid;
+    long vcpuid;
+    const char *vcpu, *classmap_str;
+    char *endptr;
+    int opt, rc = EXIT_FAILURE;
+
+    libxl_bitmap_init(&cpumap_classmap);
+
+    SWITCH_FOREACH_OPT(opt, "", NULL, "vcpu-class", 3) {
+         /* No options */
+    }
+
+    domid = find_domain(argv[optind]);
+    vcpu = argv[optind + 1];
+    classmap_str = argv[optind + 2];
+
+
+    /* Figure out with which vCPU we are dealing with */
+    vcpuid = strtol(vcpu, &endptr, 10);
+    if (vcpu == endptr || vcpuid < 0) {
+        if (strcmp(vcpu, "all")) {
+            fprintf(stderr, "Error: Invalid argument %s as VCPU.\n", vcpu);
+            goto out;
+        }
+        vcpuid = -1;
+    }
+
+    if (libxl_class_bitmap_alloc(ctx, &cpumap_classmap, 0))
+        goto out;
+
+    if (!strcmp(classmap_str, "-")) {
+        fprintf(stderr, "Error: Class affinity can't be set to empty.\n");
+        goto out;
+    }
+    else if (classrange_parse(classmap_str, classmap))
+        goto out;
+
+    if (vcpuid != -1) {
+        if (libxl_set_vcpuclass(ctx, domid, vcpuid, classmap)) {
+            fprintf(stderr, "Could not set class affinity for vcpu `%ld'.\n",
+                    vcpuid);
+            goto out;
+        }
+        rc = EXIT_SUCCESS;
+    } else {
+        libxl_vcpuinfo *vcpuinfo;
+        long i;
+        int nb_cpu, nb_vcpu;
+
+        if (!(vcpuinfo = libxl_list_vcpu(ctx, domid, &nb_vcpu, &nb_cpu))) {
+            fprintf(stderr, "libxl_list_vcpu failed.\n");
+            goto out;
+        }
+        for (i = 0; i < nb_vcpu; i++)
+            if (libxl_set_vcpuclass(ctx, domid, i, classmap)) {
+                fprintf(stderr, "Could not set class affinity for vcpu `%ld'.\n",
+                        i);
+                break;
+            }
+        rc = EXIT_SUCCESS;
+        libxl_vcpuinfo_list_free(vcpuinfo, nb_vcpu);
+    }
+
+ out:
+    libxl_bitmap_dispose(&cpumap_classmap);
+    return rc;
 }
 
 int main_vcpupin(int argc, char **argv)
@@ -6146,13 +6484,10 @@ static void output_numainfo(void)
     return;
 }
 
-static void output_topologyinfo(void)
+static void output_topologyinfo(int numa, bool classes, bool labels)
 {
     libxl_cputopology *cpuinfo;
     int i, nr;
-    libxl_pcitopology *pciinfo;
-    int valid_devs = 0;
-
 
     cpuinfo = libxl_get_cpu_topology(ctx, &nr);
     if (cpuinfo == NULL) {
@@ -6161,52 +6496,73 @@ static void output_topologyinfo(void)
     }
 
     printf("cpu_topology           :\n");
-    printf("cpu:    core    socket     node\n");
+
+
+    printf("cpu:    core    socket");
+    if (numa)
+        printf("    node");
+    if (classes)
+        printf("    class");
+    printf("\n");
 
     for (i = 0; i < nr; i++) {
-        if (cpuinfo[i].core != LIBXL_CPUTOPOLOGY_INVALID_ENTRY)
-            printf("%3d:    %4d     %4d     %4d\n", i,
-                   cpuinfo[i].core, cpuinfo[i].socket, cpuinfo[i].node);
+        if (cpuinfo[i].core != LIBXL_CPUTOPOLOGY_INVALID_ENTRY) {
+            printf("%3d:    %4d     %4d", i, cpuinfo[i].core, cpuinfo[i].socket);
+            if (numa)
+                printf("    %4d", cpuinfo[i].node);
+            if (classes) {
+                if (labels)
+                    printf("    %6s", libxl_class_to_string(cpuinfo[i].cpu_class));
+                else
+                    printf("    %4d", cpuinfo[i].cpu_class);
+            }
+            printf("\n");
+        }
     }
 
     libxl_cputopology_list_free(cpuinfo, nr);
 
-    pciinfo = libxl_get_pci_topology(ctx, &nr);
-    if (pciinfo == NULL) {
-        fprintf(stderr, "libxl_get_pci_topology failed.\n");
-        return;
-    }
+    if (numa)
+    {
+        libxl_pcitopology *pciinfo;
+        int valid_devs = 0;
 
-    printf("device topology        :\n");
-    printf("device           node\n");
-    for (i = 0; i < nr; i++) {
-        if (pciinfo[i].node != LIBXL_PCITOPOLOGY_INVALID_ENTRY) {
-            printf("%04x:%02x:%02x.%01x      %d\n", pciinfo[i].seg,
-                   pciinfo[i].bus,
-                   ((pciinfo[i].devfn >> 3) & 0x1f), (pciinfo[i].devfn & 7),
-                   pciinfo[i].node);
-            valid_devs++;
+        pciinfo = libxl_get_pci_topology(ctx, &nr);
+        if (pciinfo == NULL) {
+            fprintf(stderr, "libxl_get_pci_topology failed.\n");
+            return;
         }
+
+        printf("device topology        :\n");
+        printf("device           node\n");
+        for (i = 0; i < nr; i++) {
+            if (pciinfo[i].node != LIBXL_PCITOPOLOGY_INVALID_ENTRY) {
+                printf("%04x:%02x:%02x.%01x      %d\n", pciinfo[i].seg,
+                    pciinfo[i].bus,
+                    ((pciinfo[i].devfn >> 3) & 0x1f), (pciinfo[i].devfn & 7),
+                    pciinfo[i].node);
+                valid_devs++;
+            }
+        }
+
+        if (valid_devs == 0)
+            printf("No device topology data available\n");
+
+        libxl_pcitopology_list_free(pciinfo, nr);
     }
-
-    if (valid_devs == 0)
-        printf("No device topology data available\n");
-
-    libxl_pcitopology_list_free(pciinfo, nr);
-
     return;
 }
 
-static void print_info(int numa)
+static void print_info(int numa, bool classes, bool labels)
 {
     output_nodeinfo();
 
     output_physinfo();
 
-    if (numa) {
-        output_topologyinfo();
+    if (numa || classes)
+        output_topologyinfo(numa, classes, labels);
+    if (numa)
         output_numainfo();
-    }
     output_xeninfo();
 
     maybe_printf("xend_config_format     : 4\n");
@@ -6218,15 +6574,23 @@ int main_info(int argc, char **argv)
 {
     int opt;
     static struct option opts[] = {
+	{"classes", 0, 0, 'c'},
         {"numa", 0, 0, 'n'},
+	{"labels", 0, 0, 'l'},
         COMMON_LONG_OPTS
     };
     int numa = 0;
+    bool classes = false, labels = false;
 
-    SWITCH_FOREACH_OPT(opt, "n", opts, "info", 0) {
+    SWITCH_FOREACH_OPT(opt, "cnl", opts, "info", 0) {
+    case 'c':
+        classes = true;
+        break;
     case 'n':
         numa = 1;
         break;
+    case 'l':
+        labels = true;
     }
 
     /*
@@ -6236,7 +6600,7 @@ int main_info(int argc, char **argv)
     if (numa == 0 && argc > optind)
         info_name = argv[optind];
 
-    print_info(numa);
+    print_info(numa, classes, labels);
     return 0;
 }
 
@@ -6734,7 +7098,7 @@ static int sched_vcpu_output(libxl_scheduler sched,
     return 0;
 }
 
-/* 
+/*
  * <nothing>             : List all domain params and sched params from all pools
  * -d [domid]            : List domain params for domain
  * -d [domid] [params]   : Set domain params for domain

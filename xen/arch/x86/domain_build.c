@@ -9,6 +9,7 @@
 #include <xen/ctype.h>
 #include <xen/sched.h>
 #include <xen/sched-if.h>
+#include <xen/cpu_class.h>
 #include <xen/smp.h>
 #include <xen/delay.h>
 #include <xen/event.h>
@@ -140,6 +141,8 @@ static struct vcpu *__init setup_dom0_vcpu(struct domain *d,
         if ( !d->is_pinned && !dom0_affinity_relaxed )
             cpumask_copy(v->cpu_hard_affinity, &dom0_cpus);
         cpumask_copy(v->cpu_soft_affinity, &dom0_cpus);
+
+        cpu_class_set_all_classes(v->classes);
     }
 
     return v;

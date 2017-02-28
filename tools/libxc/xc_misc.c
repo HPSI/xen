@@ -65,6 +65,42 @@ int xc_get_max_nodes(xc_interface *xch)
     return -1;
 }
 
+int xc_get_nr_classes(xc_interface *xch)
+{
+    xc_physinfo_t physinfo;
+
+    if ( !xc_physinfo(xch, &physinfo) )
+        return physinfo.nr_classes;
+
+    return -1;
+}
+
+int xc_get_max_classes(xc_interface *xch)
+{
+    static int max_classes = 0;
+    xc_physinfo_t physinfo;
+
+    if ( max_classes )
+        return max_classes;
+
+    if ( !xc_physinfo(xch, &physinfo) )
+    {
+        max_classes = physinfo.max_class_id + 1;
+        return max_classes;
+    }
+
+    return -1;
+}
+
+int xc_get_classmap_size(xc_interface *xch)
+{
+    int max_classes = xc_get_max_classes(xch);
+
+    if ( max_classes < 0 )
+        return -1;
+    return (max_classes + 7) / 8;
+}
+
 int xc_get_cpumap_size(xc_interface *xch)
 {
     int max_cpus = xc_get_max_cpus(xch);

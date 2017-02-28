@@ -21,6 +21,7 @@
 #include <xen/rcupdate.h>
 #include <xen/guest_access.h>
 #include <xen/bitmap.h>
+#include <xen/cpu_class.h>
 #include <xen/paging.h>
 #include <xen/hypercall.h>
 #include <xen/vm_event.h>
@@ -691,7 +692,38 @@ long do_domctl(XEN_GUEST_HANDLE_PARAM(xen_domctl_t) u_domctl)
         ret = nodemask_to_xenctl_bitmap(&op->u.nodeaffinity.nodemap,
                                         &d->node_affinity);
         break;
+    case XEN_DOMCTL_setvcpuclass:
+    case XEN_DOMCTL_getvcpuclass:
+    {
+        struct vcpu *v;
+        xen_domctl_classaffinity_t *classaff = &op->u.classaffinity;
+        ret = -ESRCH;
+        if ( (v = d->vcpu[classaff->vcpu]) == NULL )
+            break;
 
+        if ( op->cmd == XEN_DOMCTL_setvcpuclass )
+        {
+            cpumask_var_t classes;
+            if ( !alloc_cpumask_var(&classes) )
+            {
+                ret = -ENOMEM;
+                break;
+            }
+
+            ret = xenctl_bitmap_to_cpumask(&classes, &classaff->classmap);
+            if (ret)
+                goto setvcpuclass_out;
+
+            ret = vcpu_set_classes(v, classes);
+
+setvcpuclass_out:
+            free_cpumask_var(classes);
+            break;
+        }
+
+        ret = cpumask_to_xenctl_bitmap(&classaff->classmap, v->classes);
+        break;
+    }
     case XEN_DOMCTL_setvcpuaffinity:
     case XEN_DOMCTL_getvcpuaffinity:
     {

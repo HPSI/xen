@@ -156,6 +156,32 @@ int libxl_domain_get_nodeaffinity(libxl_ctx *ctx, uint32_t domid,
     return 0;
 }
 
+int libxl_set_vcpuclass(libxl_ctx *ctx, uint32_t domid, uint32_t vcpuid,
+                        const libxl_bitmap *classmap)
+{
+    GC_INIT(ctx);
+    if (xc_vcpu_setclass(ctx->xch, domid, vcpuid, classmap->map)) {
+        LOGE(ERROR, "setting class affinity");
+        GC_FREE;
+        return ERROR_FAIL;
+    }
+    GC_FREE;
+    return 0;
+}
+
+int libxl_get_vcpuclass(libxl_ctx *ctx, uint32_t domid, uint32_t vcpuid,
+                        const libxl_bitmap *classmap)
+{
+    GC_INIT(ctx);
+    if (xc_vcpu_getclass(ctx->xch, domid, vcpuid, classmap->map)) {
+        LOGE(ERROR, "getting class affinity");
+        GC_FREE;
+        return ERROR_FAIL;
+    }
+    GC_FREE;
+    return 0;
+}
+
 int libxl_get_scheduler(libxl_ctx *ctx)
 {
     int r, sched;

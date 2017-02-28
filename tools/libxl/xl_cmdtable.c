@@ -215,10 +215,18 @@ struct cmd_spec cmd_table[] = {
       "<Domain> <Button>",
       "<Button> may be 'power' or 'sleep'."
     },
+    {
+        "vcpu-class",
+        &main_vcpuclass, 0, 1,
+        "Sets the classes in which a VCPU belongs",
+        "<Domain> <VCPU|all> <Class affinity|all>",
+    },
     { "vcpu-list",
       &main_vcpulist, 0, 0,
       "List the VCPUs for all/some domains",
       "[Domain, ...]",
+      "-c, --classes      show class info\n"
+      "-l, --labels        show class labels"
     },
     { "vcpu-pin",
       &main_vcpupin, 1, 1,
@@ -240,7 +248,9 @@ struct cmd_spec cmd_table[] = {
     { "info",
       &main_info, 0, 0,
       "Get information about Xen host",
-      "-n, --numa         List host NUMA topology information",
+      "-n, --numa         List host NUMA topology information\n"
+      "-c, --classes      List host class topology information\n"
+      "-l, --labels       Show class labels"
     },
     { "sharing",
       &main_sharing, 0, 0,

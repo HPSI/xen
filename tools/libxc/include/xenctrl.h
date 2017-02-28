@@ -419,6 +419,20 @@ int xc_get_nodemap_size(xc_interface *xch);
 xc_nodemap_t xc_nodemap_alloc(xc_interface *xch);
 
 /*
+ * CLASSMAP handling
+ */
+typedef uint8_t *xc_classmap_t;
+
+/* return maximum number of classes the hypervisor supports */
+int xc_get_max_classes(xc_interface *xch);
+
+/* return current number of classes */
+int xc_get_nr_classes(xc_interface *xch);
+
+/* return array size for classmap */
+int xc_get_classmap_size(xc_interface *xch);
+
+/*
  * DOMAIN DEBUGGING FUNCTIONS
  */
 
@@ -731,6 +745,31 @@ int xc_vcpu_getaffinity(xc_interface *xch,
                         xc_cpumap_t cpumap_soft,
                         uint32_t flags);
 
+/**
+ * This function specifies the classes in which a vcpu belongs
+ *
+ * @param xch a handle to an open hypervisor interface.
+ * @param domid the id of the domain to which the vcpu belongs
+ * @param vcpu the vcpu id wihin the domain
+ * @param classmap specifies the classes
+ */
+int xc_vcpu_setclass(xc_interface *xch,
+                     uint32_t domid,
+                     int vcpu,
+                     xc_classmap_t classmap);
+
+/**
+ * This function gets the classes in which a vcpu belongs
+ *
+ * @param xch a handle to an open hypervisor interface.
+ * @param domid the id of the domain to which the vcpu belongs
+ * @param vcpu the vcpu id wihin the domain
+ * @param classmap is where the classes are returned
+ */
+int xc_vcpu_getclass(xc_interface *xch,
+                     uint32_t domid,
+                     int vcpu,
+                     xc_classmap_t classmap);
 
 /**
  * This function will return the guest_width (in bytes) for the

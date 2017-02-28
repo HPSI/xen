@@ -378,6 +378,17 @@ int libxl__build_pre(libxl__gc *gc, uint32_t domid,
     if (info->nodemap.size)
         libxl_domain_set_nodeaffinity(ctx, domid, &info->nodemap);
 
+    if (info->num_vcpu_class) {
+        int i;
+        for (i = 0; i < info->num_vcpu_class; i++) {
+            if (info->num_vcpu_class && i < info->num_vcpu_class)
+                if (libxl_set_vcpuclass(ctx, domid, i, &info->vcpu_class[i])) {
+                    LOG(ERROR, "setting class failed on vcpu `%d'", i);
+                    return ERROR_FAIL;
+                }
+        }
+    }
+
     if (info->num_vcpu_hard_affinity || info->num_vcpu_soft_affinity) {
         libxl_bitmap *hard_affinity, *soft_affinity;
         int i, n_vcpus;

@@ -326,6 +326,80 @@ int xc_vcpu_getaffinity(xc_interface *xch,
     return ret;
 }
 
+int xc_vcpu_setclass(xc_interface *xch, uint32_t domid, int vcpu,
+                     xc_classmap_t classmap)
+{
+    DECLARE_DOMCTL;
+    DECLARE_HYPERCALL_BOUNCE(classmap, 0,
+                             XC_HYPERCALL_BUFFER_BOUNCE_IN);
+    int ret = -1;
+    int cpusize;
+
+    cpusize = xc_get_cpumap_size(xch);
+    if (cpusize <= 0)
+    {
+        PERROR("Could not get number of cpus");
+        return -1;
+    }
+
+    HYPERCALL_BOUNCE_SET_SIZE(classmap, cpusize);
+    if ( xc_hypercall_bounce_pre(xch, classmap) )
+    {
+        PERROR("Could not allocate hcall buffers for DOMCTL_setvcpuclass");
+        goto out;
+    }
+
+    domctl.cmd = XEN_DOMCTL_setvcpuclass;
+    domctl.domain = (domid_t)domid;
+    domctl.u.classaffinity.vcpu = vcpu;
+
+    set_xen_guest_handle(domctl.u.classaffinity.classmap.bitmap,
+                         classmap);
+    domctl.u.classaffinity.classmap.nr_bits = cpusize * 8;
+
+    ret = do_domctl(xch, &domctl);
+ out:
+    xc_hypercall_bounce_post(xch, classmap);
+    return ret;
+}
+
+int xc_vcpu_getclass(xc_interface *xch, uint32_t domid, int vcpu,
+                     xc_classmap_t classmap)
+{
+    DECLARE_DOMCTL;
+    DECLARE_HYPERCALL_BOUNCE(classmap, 0, XC_HYPERCALL_BUFFER_BOUNCE_OUT);
+    int ret = -1;
+    int cpusize;
+
+    cpusize = xc_get_cpumap_size(xch);
+    if (cpusize <= 0)
+    {
+        PERROR("Could not get number of cpus");
+        return -1;
+    }
+
+    HYPERCALL_BOUNCE_SET_SIZE(classmap, cpusize);
+    if ( xc_hypercall_bounce_pre(xch, classmap) )
+    {
+        PERROR("Could not allocate hcall buffers for DOMCTL_getvcpuclass");
+        goto out;
+    }
+
+    domctl.cmd = XEN_DOMCTL_getvcpuclass;
+    domctl.domain = (domid_t)domid;
+    domctl.u.classaffinity.vcpu = vcpu;
+
+    set_xen_guest_handle(domctl.u.classaffinity.classmap.bitmap,
+                         classmap);
+    domctl.u.classaffinity.classmap.nr_bits = cpusize * 8;
+
+    ret = do_domctl(xch, &domctl);
+ out:
+    xc_hypercall_bounce_post(xch, classmap);
+    return ret;
+}
+
+
 int xc_domain_get_guest_width(xc_interface *xch, uint32_t domid,
                               unsigned int *guest_width)
 {
